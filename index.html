@@ -150,6 +150,8 @@
 
     <!-- Notifications: -->
     <script type="text/javascript">
+        if (Notification.permission !== "granted") Notification.requestPermission();
+
         function notify(body) {
             if (Notification.permission !== "granted") return;
 
