@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>focus-keeper</title>
+</head>
+<body>
+    <!-- CSS variables: -->
+    <style>
+        :root {
+            --progress-color: red;
+            --progress-animation-duration: 3s;
+            --progress-size: 100px;
+            --progress-circle-size: 10px;
+        }
+    </style>
+
+    <!-- Progress circle: -->
+    <!-- Code stolen from: https://stackoverflow.com/a/17652638 (I also modified it.) -->
+    <style>
+        .wrapper {
+            width: var(--progress-size); /* Set the size of the progress bar */
+            height: var(--progress-size);
+            position: absolute; /* Enable clipping */
+            clip: rect(0px, var(--progress-size), var(--progress-size), calc(var(--progress-size) / 2)); /* Hide half of the progress bar */
+        }
+
+        /* Set the sizes of the elements that make up the progress bar */
+        .circle {
+            width: calc(var(--progress-size) - var(--progress-circle-size) * 2);
+            height: calc(var(--progress-size) - var(--progress-circle-size) * 2);
+            border: var(--progress-circle-size) solid var(--progress-color);
+            border-radius: calc(var(--progress-size) / 2);
+            position: absolute;
+            clip: rect(0px, calc(var(--progress-size) / 2), var(--progress-size), 0px);
+        }
+
+        /* Using the data attributes for the animation selectors. */
+        /* Base settings for all animated elements */
+        div[data-anim~=base] {
+            -webkit-animation-iteration-count: 1;  /* Only run once */
+            -webkit-animation-fill-mode: forwards; /* Hold the last keyframe */
+            -webkit-animation-timing-function: linear; /* Linear animation */
+        }
+
+        .wrapper[data-anim~=wrapper] {
+            -webkit-animation-duration: 0.01s; /* Complete keyframes asap */
+            -webkit-animation-delay: calc(var(--progress-animation-duration) / 2); /* Wait half of the animation */
+            -webkit-animation-name: close-wrapper; /* Keyframes name */
+        }
+
+        .circle[data-anim~=left] {
+            -webkit-animation-duration: var(--progress-animation-duration); /* Full animation time */
+            -webkit-animation-name: left-spin;
+        }
+
+        .circle[data-anim~=right] {
+            -webkit-animation-duration: calc(var(--progress-animation-duration) / 2); /* Half animation time */
+            -webkit-animation-name: right-spin;
+        }
+
+        /* Rotate the right side of the progress bar from 0 to 180 degrees */
+        @-webkit-keyframes right-spin {
+            from {
+                -webkit-transform: rotate(0deg);
+            }
+            to {
+                -webkit-transform: rotate(180deg);
+            }
+        }
+
+        /* Rotate the left side of the progress bar from 0 to 360 degrees */
+        @-webkit-keyframes left-spin {
+            from {
+                -webkit-transform: rotate(0deg);
+            }
+            to {
+                -webkit-transform: rotate(360deg);
+            }
+        }
+
+        /* Set the wrapper clip to auto, effectively removing the clip */
+        @-webkit-keyframes close-wrapper {
+            to {
+                clip: rect(auto, auto, auto, auto);
+            }
+        }
+    </style>
+    
+    <div id="progress-wrapper" class="wrapper">
+        <div id="progress-circle-0" class="circle"></div>
+        <div id="progress-circle-1" class="circle"></div>
+    </div>
+
+    <div id="interval-manager" style="position: absolute; top: calc(var(--progress-size) + var(--progress-circle-size));" hidden>
+        Intervals
+        <button id="add-interval">Add interval</button>
+        <input id="interval-name" type="text">
+        <button id="save">Save</button>
+        <button id="start">Start</button>
+        <div id="interval-container" style="display: flex; flex-direction: column;"></div>
+    </div>
+
+    <button id="pause" hidden>Pause</button>
+
+    <div id="progress-time-current">00:00</div>
+    <div id="progress-time-total">00:00</div>
+    <div id="interval-name-display">Take a break!</div>
+
+    <!-- Progress circle: -->
+    <script type="text/javascript">
+        const progress = {
+            wrapper: document.getElementById("progress-wrapper"),
+            circle0: document.getElementById("progress-circle-0"),
+            circle1: document.getElementById("progress-circle-1")
+        }
+
+        function startProgressCircleAnimation() {
+            progress.wrapper.setAttribute("data-anim", "base wrapper");
+            progress.circle0.setAttribute("data-anim", "base left");
+            progress.circle1.setAttribute("data-anim", "base right");
+        }
+
+        function resetProgressCircleAnimation() {
+            progress.wrapper.removeAttribute("data-anim");
+            progress.wrapper.style.animation = "none";
+            progress.wrapper.offsetHeight; /* trigger reflow */
+            progress.wrapper.style.animation = null;
+
+            progress.circle0.removeAttribute("data-anim");
+            progress.circle0.style.animation = "none";
+            progress.circle0.offsetHeight; /* trigger reflow */
+            progress.circle0.style.animation = null;
+
+            progress.circle1.removeAttribute("data-anim");
+            progress.circle1.style.animation = "none";
+            progress.circle1.offsetHeight; /* trigger reflow */
+            progress.circle1.style.animation = null;
+        }
+
+        function setProgressCircleAnimationDuration(minutes) {
+            document.documentElement.style.setProperty("--progress-animation-duration", `${minutes * 60}s`);
+        }
+
+        function setProgressCircleColor(color) {
+            document.documentElement.style.setProperty("--progress-color", color);
+        }
+    </script>
+
+    <!-- Notifications: -->
+    <script type="text/javascript">
+        function notify(body) {
+            if (Notification.permission !== "granted") return;
+
+            new Notification("focus-keeper", {
+                lang: "EN",
+                vibrate: true,
+                body: body,
+                renotify: true
+            });
+        }
+    </script>
+
+    <script type="text/javascript">
+        const intervalManager = document.getElementById("interval-manager");
+        const intervalContainer = document.getElementById("interval-container");
+        const pauseButton = document.getElementById("pause");
+
+        const progressTimeCurrent = document.getElementById("progress-time-current");
+        const progressTimeTotal = document.getElementById("progress-time-total");
+        const intervalNameElement = document.getElementById("interval-name-display");
+
+        const addIntervalButton = document.getElementById("add-interval");
+        const intervalNameInput = document.getElementById("interval-name");
+        const intervalSaveButton = document.getElementById("save");
+        const intervalStartButton = document.getElementById("start");
+
+        const intervals = [];
+        let intervalName = "";
+
+        let timeStart = new Date();
+        let currentInterval = 0;
+
+        // Resets the positions of the different intervals.
+        // Needed after deleting an interval,
+        function redoPositions() {
+            for (const i in intervals) intervals[i].setPosition(i);
+        }
+
+        // Changes if the up and down buttons are disabled or enabled.
+        // Prevents the bottom most element from falsely being moved down or the top most one from being moved up.
+        // Needed after deleting, adding or moving intervals.
+        function enableDisableButtons() {
+            if (intervals.length === 0) return;
+
+            for (const i of intervals) {
+                i.buttonUp.disabled = false;
+                i.buttonDown.disabled = false;
+            }
+
+            intervals[0].buttonUp.disabled = true;
+            intervals.at(-1).buttonDown.disabled = true;
+        }
+
+        // Handles the removing of an interval.
+        function deleteElement(el) {
+            const index = intervals.indexOf(el);
+            if (index < 0) return;
+            intervals.splice(index, 1);
+
+            redoPositions();
+            enableDisableButtons();
+        }
+
+        function minutesToDisplayTime(m) {
+            let minutes = parseInt(m);
+            let hours = parseInt(minutes / 60);
+            minutes -= hours * 60;
+            minutes = String(minutes);
+            hours = String(hours);
+            if (minutes.length === 1) minutes = "0" + minutes;
+            if (hours.length === 1) hours = "0" + hours;
+            return `${hours}:${minutes}`;
+        }
+
+        function timeout() {
+            const passedTimeMinutes = (new Date() - timeStart) / (1000 * 60);
+
+            progressTimeCurrent.textContent = minutesToDisplayTime(passedTimeMinutes);
+
+            const i = intervals[currentInterval];
+            if (i.timeMinutes < passedTimeMinutes) {
+                currentInterval++;
+
+                if (currentInterval >= intervals.length) {
+                    currentInterval = 0;
+                }
+
+                timeStart = new Date();
+                intervalNameElement.textContent = intervals[currentInterval].intervalName.value;
+                setProgressCircleAnimationDuration(intervals[currentInterval].timeMinutes);
+                resetProgressCircleAnimation();
+                setProgressCircleColor(intervals[currentInterval].color.value);
+                startProgressCircleAnimation();
+                progressTimeTotal.textContent = minutesToDisplayTime(intervals[currentInterval].timeMinutes);
+
+                notify(`New interval started: ${intervals[currentInterval].intervalName.value} (${progressTimeTotal.textContent})`);
+            }
+
+            setTimeout(timeout, 500);
+        }
+
+        class Interval {
+
+            timeMinutes;
+            position;
+
+            interval;
+            intervalName;
+            color;
+            buttonUp;
+            buttonDown;
+
+
+            constructor(position) {
+                this.timeMinutes = 0;
+                this.position = position;
+
+                // Create html elements:
+                this.interval = document.createElement("div");
+                const intervalTime = document.createElement("input");
+                this.intervalName = document.createElement("input");
+                this.color = document.createElement("input");
+                this.buttonUp = document.createElement("button");
+                this.buttonDown = document.createElement("button");
+                const buttonDelete = document.createElement("button");
+
+                // Add elements to each other and to dom:
+                this.interval.appendChild(intervalTime);
+                this.interval.appendChild(this.intervalName);
+                this.interval.appendChild(this.color);
+                this.interval.appendChild(this.buttonUp);
+                this.interval.appendChild(this.buttonDown);
+                this.interval.appendChild(buttonDelete);
+                intervalContainer.appendChild(this.interval);
+
+                // Set element properties:
+                intervalTime.type = "time";
+                this.intervalName.type = "text";
+                this.color.type = "text";
+                this.buttonUp.textContent = "up";
+                this.buttonUp.disabled = true;
+                this.buttonDown.textContent = "down";
+                this.buttonDown.disabled = true;
+                buttonDelete.textContent = "delete";
+
+                // Delete interval:
+                buttonDelete.addEventListener("click", () => {
+                    this.interval.remove();
+                    deleteElement(this);
+                });
+
+                // Move up:
+                this.buttonUp.addEventListener("click", () => {
+                    const elTemp = intervals[this.position - 1];
+                    intervals[this.position - 1] = this;
+                    intervals[this.position] = elTemp;
+
+                    redoPositions();
+                    enableDisableButtons();
+                });
+
+                // Move down:
+                this.buttonDown.addEventListener("click", () => {
+                    const elTemp = intervals[this.position + 1];
+                    intervals[this.position + 1] = this;
+                    intervals[this.position] = elTemp;
+
+                    redoPositions();
+                    enableDisableButtons();
+                });
+
+                // Interval time:
+                intervalTime.addEventListener("change", () => {
+                    const v = intervalTime.value;
+                    if (v === "") {
+                        this.timeMinutes = 0;
+                        return;
+                    }
+
+                    const parts = v.split(":");
+                    if (parts.length !== 2) {
+                        this.timeMinutes = 0;
+                        return;
+                    }
+
+                    const minutes = Number(parts[1]);
+                    Number.isSafeInteger(minutes)? this.timeMinutes = minutes : this.timeMinutes = 0;
+
+                    const hours = Number(parts[0]);
+                    Number.isSafeInteger(hours)? this.timeMinutes += hours * 60 : this.timeMinutes = 0;
+                });
+            }
+
+            setPosition(pos) {
+                this.position = pos;
+                this.interval.style = `order: ${pos};`;
+            }
+
+        }
+        
+        // Add interval:
+        addIntervalButton.addEventListener("click", () => {
+            intervals.push(new Interval(intervals.length));
+            enableDisableButtons();
+        });
+
+        // Interval name:
+        intervalNameInput.addEventListener("change", () => {
+            intervalName = intervalNameInput.value;
+            if (localStorage.getItem(intervalName) !== null) console.log("exists");
+        });
+
+        // Save:
+        intervalSaveButton.addEventListener("click", () => {
+            const data = [];
+            for (const i of intervals) {
+                data.push({
+                    timeMinutes: i.timeMinutes,
+                    name: i.intervalName.value,
+                    color: i.color
+                });
+            }
+            localStorage.setItem(intervalName, JSON.stringify(data));
+        });
+
+        // Start:
+        intervalStartButton.addEventListener("click", () => {
+            timeStart = new Date();
+            currentInterval = 0;
+
+            intervalNameElement.textContent = intervals[0].intervalName.value;
+            setProgressCircleAnimationDuration(intervals[0].timeMinutes);
+            resetProgressCircleAnimation();
+            setProgressCircleColor(intervals[0].color.value);
+            startProgressCircleAnimation();
+            progressTimeTotal.textContent = minutesToDisplayTime(intervals[0].timeMinutes);
+
+            intervalManager.hidden = true;
+            pauseButton.hidden = false;
+
+            timeout();
+        });
+
+        intervalManager.hidden = false;
+    </script>
+</body>
+</html>
