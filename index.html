@@ -108,6 +108,8 @@
     <div id="progress-time-total">00:00</div>
     <div id="interval-name-display">Take a break!</div>
 
+    <button id="allow-notifications-button" onclick="setupNotifications()" hidden>Notification</button>
+
     <!-- Progress circle: -->
     <script type="text/javascript">
         const progress = {
@@ -150,7 +152,22 @@
 
     <!-- Notifications: -->
     <script type="text/javascript">
-        if (Notification.permission !== "granted") Notification.requestPermission();
+        const allowNotificationsButton = document.getElementById("allow-notifications-button");
+
+        if (!("Notification" in window)) {
+            alert("This browser does not support desktop notification!"); 
+        } else if (Notification.permission !== "granted") {
+            allowNotificationsButton.hidden = false;
+        }
+
+        function setupNotifications() {
+            Notification.requestPermission().then((permission) => {
+                if (permission === "granted") {
+                    alert("Permission to send notifications was granted!");
+                    allowNotificationsButton.hidden = true;
+                }
+            });
+        }
 
         function notify(body) {
             if (Notification.permission !== "granted") return;
