@@ -1,0 +1,4 @@
+exclude:
+  - .gitattributes
+  - LICENSE
+  - README.md
