@@ -88,11 +88,22 @@
         }
     </style>
     
+    <!-- Progress circle: -->
     <div id="progress-wrapper" class="wrapper">
         <div id="progress-circle-0" class="circle"></div>
         <div id="progress-circle-1" class="circle"></div>
     </div>
 
+    <!-- Current interval info: -->
+    <div style="position: absolute; width: var(--progress-size); height: var(--progress-size); display: flex;">
+        <div style="margin: auto; text-align: center;">
+            <div id="progress-time-current">00:00</div>
+            <div id="progress-time-total">00:00</div>
+            <div id="interval-name-display">Take a break!</div>
+        </div>
+    </div>
+
+    <!-- Interval manager: -->
     <div id="interval-manager" style="position: absolute; top: calc(var(--progress-size) + var(--progress-circle-size));" hidden>
         Intervals
         <button id="add-interval">Add interval</button>
@@ -101,12 +112,8 @@
         <button id="start">Start</button>
         <div id="interval-container" style="display: flex; flex-direction: column;"></div>
     </div>
-
+    
     <button id="pause" hidden>Pause</button>
-
-    <div id="progress-time-current">00:00</div>
-    <div id="progress-time-total">00:00</div>
-    <div id="interval-name-display">Take a break!</div>
 
     <button id="allow-notifications-button" onclick="setupNotifications()" hidden>Notification</button>
 
@@ -155,7 +162,7 @@
         const allowNotificationsButton = document.getElementById("allow-notifications-button");
 
         if (!("Notification" in window)) {
-            alert("This browser does not support desktop notification!"); 
+            alert("This browser does not support desktop notifications!"); 
         } else if (Notification.permission !== "granted") {
             allowNotificationsButton.hidden = false;
         }
